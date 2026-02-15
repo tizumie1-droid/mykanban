@@ -1,110 +1,133 @@
 # gantt.py
 import wx
-from datetime import datetime, timedelta
+import datetime
+from models import Task
 
 
 class GanttView(wx.Frame):
     def __init__(self, controller):
-        super().__init__(None, title="Gantt Chart", size=(1000, 600))
+        super().__init__(None, title="Gantt Chart", size=(900, 500))
         self.controller = controller
 
-        self.mode = "month"  # month / week
-        self.build_ui()
-        self.draw()
-
-    # ---------------------
-    # UI
-    # ---------------------
-
-    def build_ui(self):
         panel = wx.Panel(self)
+        self.panel = panel
+
         vbox = wx.BoxSizer(wx.VERTICAL)
 
-        # Toolbar
-        hbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_month = wx.Button(panel, label="Month View")
-        self.btn_week = wx.Button(panel, label="Week View")
-        hbox.Add(self.btn_month, 0, wx.ALL, 5)
-        hbox.Add(self.btn_week, 0, wx.ALL, 5)
+        # ===== Toolbar =====
+        toolbar = wx.BoxSizer(wx.HORIZONTAL)
 
-        vbox.Add(hbox, 0, wx.EXPAND)
+        self.view_choice = wx.Choice(panel, choices=["Month", "Week"])
+        self.view_choice.SetSelection(0)
+        toolbar.Add(wx.StaticText(panel, label="View:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        toolbar.Add(self.view_choice, 0, wx.RIGHT, 10)
 
-        # Canvas
-        self.canvas = wx.Panel(panel)
-        self.canvas.Bind(wx.EVT_PAINT, self.on_paint)
-        vbox.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 10)
+        self.refresh_btn = wx.Button(panel, label="Refresh")
+        toolbar.Add(self.refresh_btn, 0)
+
+        vbox.Add(toolbar, 0, wx.EXPAND | wx.ALL, 5)
+
+        # ===== Canvas =====
+        self.canvas = GanttCanvas(panel, controller)
+        vbox.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 5)
 
         panel.SetSizer(vbox)
 
-        # Events
-        self.btn_month.Bind(wx.EVT_BUTTON, self.on_month)
-        self.btn_week.Bind(wx.EVT_BUTTON, self.on_week)
+        self.refresh_btn.Bind(wx.EVT_BUTTON, self.on_refresh)
+        self.view_choice.Bind(wx.EVT_CHOICE, self.on_refresh)
 
-    # ---------------------
-    # Events
-    # ---------------------
+        self.Center()
+        self.Show()
 
-    def on_month(self, event):
-        self.mode = "month"
+    def on_refresh(self, event):
+        mode = self.view_choice.GetStringSelection()
+        self.canvas.set_mode(mode)
         self.canvas.Refresh()
 
-    def on_week(self, event):
-        self.mode = "week"
-        self.canvas.Refresh()
 
-    # ---------------------
-    # Draw
-    # ---------------------
+class GanttCanvas(wx.Panel):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.mode = "Month"  # or Week
 
-    def draw(self):
-        self.canvas.Refresh()
+        self.Bind(wx.EVT_PAINT, self.on_paint)
+
+    def set_mode(self, mode):
+        self.mode = mode
 
     def on_paint(self, event):
-        dc = wx.PaintDC(self.canvas)
+        dc = wx.PaintDC(self)
         dc.Clear()
 
         tasks = self.controller.get_tasks()
 
-        if not tasks:
-            return
+        today = datetime.date.today()
 
-        today = datetime.today()
-
-        if self.mode == "month":
+        # ===== Time Axis =====
+        if self.mode == "Month":
             start = today.replace(day=1)
-            end = (start + timedelta(days=32)).replace(day=1)
-            days = (end - start).days
-        else:
-            start = today - timedelta(days=today.weekday())
-            end = start + timedelta(days=7)
-            days = 7
+            if start.month == 12:
+                end = start.replace(year=start.year + 1, month=1)
+            else:
+                end = start.replace(month=start.month + 1)
+        else:  # Week
+            start = today - datetime.timedelta(days=today.weekday())
+            end = start + datetime.timedelta(days=7)
 
-        width, height = self.canvas.GetSize()
-        col_w = width / days
+        days = (end - start).days
+
+        w, h = self.GetSize()
+        margin_left = 120
+        margin_top = 40
         row_h = 30
+        chart_w = w - margin_left - 20
 
-        # Grid
-        for i in range(days):
-            x = int(i * col_w)
-            dc.DrawLine(x, 0, x, height)
+        # ===== Draw Axis =====
+        for i in range(days + 1):
+            x = margin_left + int(chart_w * i / days)
+            dc.DrawLine(x, margin_top - 10, x, h - 20)
 
-        y = 0
+            date_label = (start + datetime.timedelta(days=i)).strftime("%d")
+            dc.DrawText(date_label, x - 5, 5)
+
+        # ===== Draw Tasks =====
+        y = margin_top
         for t in tasks:
             if not t.due:
                 continue
 
             try:
-                due = datetime.strptime(t.due, "%Y-%m-%d")
+                due = datetime.datetime.strptime(t.due, "%Y-%m-%d").date()
             except:
                 continue
 
-            if not (start <= due < end):
+            if t.start_date:
+                try:
+                    start_d = datetime.datetime.strptime(t.start_date, "%Y-%m-%d").date()
+                except:
+                    start_d = due
+            else:
+                start_d = due
+
+            # Clip
+            s = max(start_d, start)
+            e = min(due, end)
+
+            if s > e:
                 continue
 
-            day_index = (due - start).days
-            x = int(day_index * col_w)
+            xs = margin_left + int(chart_w * (s - start).days / days)
+            xe = margin_left + int(chart_w * (e - start).days / days)
 
-            dc.DrawRectangle(x, y, int(col_w), row_h)
-            dc.DrawText(t.name, x + 2, y + 8)
+            dc.DrawText(t.name, 10, y + 5)
 
-            y += row_h + 5
+            dc.SetBrush(wx.Brush(wx.Colour(100, 180, 240)))
+            dc.SetPen(wx.Pen(wx.Colour(60, 120, 200)))
+
+            if xs == xe:
+                dc.DrawCircle(xs, y + 12, 5)
+            else:
+                dc.DrawRectangle(xs, y + 5, max(5, xe - xs), 15)
+
+            y += row_h
