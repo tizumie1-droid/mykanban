@@ -5,6 +5,7 @@ from models import Task
 from calendar_view import CalendarDialog
 from dragdrop import bind_drag, bind_drop
 from gantt import GanttView
+import os
 
 
 # =========================
@@ -100,6 +101,10 @@ class AddTaskDialog(wx.Dialog):
 
         self.SetSizer(vbox)
 
+        # CheckBox
+        self.md_checkbox = wx.CheckBox(self, label="Create Markdown file (タスク名.md)")
+        vbox.Add(self.md_checkbox, 0, wx.ALL, 5)
+
         # Events
         btn_start_cal.Bind(wx.EVT_BUTTON, self.on_start_calendar)
         btn_due_cal.Bind(wx.EVT_BUTTON, self.on_due_calendar)
@@ -121,7 +126,8 @@ class AddTaskDialog(wx.Dialog):
             "name": self.name_ctrl.GetValue(),
             "start_date": self.start_ctrl.GetValue(),
             "due": self.due_ctrl.GetValue(),
-            "memo": self.memo_ctrl.GetValue()
+            "memo": self.memo_ctrl.GetValue(),
+            "create_md": self.md_checkbox.GetValue()
         }
 
 
@@ -222,8 +228,10 @@ class KanbanView(wx.Frame):
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
         btn_add = wx.Button(panel, label="+ Add Task")
         btn_gantt = wx.Button(panel, label="📊 Gantt")
+        btn_completelist = wx.Button(panel, label="Complete List")
         toolbar.Add(btn_add, 0, wx.ALL, 5)
         toolbar.Add(btn_gantt, 0, wx.ALL, 5)
+        toolbar.Add(btn_completelist, 0, wx.ALL, 5)
         main_vbox.Add(toolbar, 0, wx.EXPAND)
 
         # Board
@@ -239,8 +247,8 @@ class KanbanView(wx.Frame):
         self.columns["done"] = done
 
         hbox.Add(todo["panel"], 1, wx.EXPAND | wx.ALL, 5)
-        hbox.Add(doing["panel"], 1, wx.EXPAND | wx.ALL, 5)
         hbox.Add(done["panel"], 1, wx.EXPAND | wx.ALL, 5)
+        hbox.Add(doing["panel"], 1, wx.EXPAND | wx.ALL, 5)
 
         self.board_panel.SetSizer(hbox)
         main_vbox.Add(self.board_panel, 1, wx.EXPAND)
@@ -253,30 +261,36 @@ class KanbanView(wx.Frame):
 
     # ---------------------
     # Column
-    # ---------------------
-
+    # ---------------------    
     def create_column(self, parent, title, status):
         panel = wx.Panel(parent, style=wx.BORDER_SIMPLE)
         vbox = wx.BoxSizer(wx.VERTICAL)
 
-        title_lbl = wx.StaticText(panel, label=title)
-        title_lbl.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-        vbox.Add(title_lbl, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+        lbl = wx.StaticText(panel, label=title)
+        lbl.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        vbox.Add(lbl, 0, wx.ALL | wx.ALIGN_CENTER, 3)
 
-        task_container = wx.Panel(panel)
-        task_sizer = wx.BoxSizer(wx.VERTICAL)
-        task_container.SetSizer(task_sizer)
+        scroll = wx.ScrolledWindow(panel, style=wx.VSCROLL)
+        scroll.SetScrollRate(0, 20)
 
-        vbox.Add(task_container, 1, wx.EXPAND | wx.ALL, 5)
+        container = wx.Panel(scroll)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        container.SetSizer(sizer)
+
+        sc_sizer = wx.BoxSizer(wx.VERTICAL)
+        sc_sizer.Add(container, 1, wx.EXPAND)
+        scroll.SetSizer(sc_sizer)
+
+        vbox.Add(scroll, 1, wx.EXPAND | wx.ALL, 5)
         panel.SetSizer(vbox)
 
-        # Drop
-        bind_drop(task_container, status, self.controller, self.refresh)
+        bind_drop(container, status, self.controller, self.refresh)
 
         return {
             "panel": panel,
-            "task_container": task_container,
-            "task_sizer": task_sizer,
+            "scroll": scroll,
+            "task_container": container,
+            "task_sizer": sizer,
             "status": status
         }
 
@@ -303,6 +317,34 @@ class KanbanView(wx.Frame):
             )
 
             self.controller.add_task(task)
+
+            # =========================
+            # Markdown file creation
+            # =========================
+            if data.get("create_md"):
+                safe_name = data["name"].replace("/", "_").replace("\\", "_")
+                md_dir = "C:\\Users\\t4tsu\\OneDrive\\デスクトップ\\mykanban\\mykanban"
+                filename = os.path.join(md_dir, f"{safe_name}.md")
+
+                try:
+                    with open(filename, "w", encoding="utf-8") as f:
+                        f.write(f"# {data['name']}\n\n")
+                        f.write(f"## Due\n{data['due']}\n\n")
+                        f.write("## Memo\n")
+                        f.write(f"{data['memo']}\n\n")
+                        f.write("## Notes\n\n")
+
+                    print(f"[MD CREATED] {filename}")
+
+                except Exception as e:
+                    wx.MessageBox(
+                        f"Markdown file creation failed:\n{e}",
+                        "File Error",
+                        wx.ICON_ERROR
+                    )
+
+            self.refresh()
+
             wx.CallAfter(self.refresh)
 
         dlg.Destroy()
