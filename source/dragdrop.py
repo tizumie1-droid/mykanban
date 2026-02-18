@@ -45,62 +45,64 @@ class TaskDropTarget(wx.TextDropTarget):
                 now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 task.completed_date = now
                 # MarkdownファイルのComplete dateを更新
-                try:
-                    with open(md_path, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                    # Completed dateの書き換え
-                    new_lines = []
-                    in_completed_section = False
-                    completed_updated = False
-                    for line in lines:
-                        if line.strip().startswith("## Completed"):
-                            new_lines.append("## Completed\n")
-                            new_lines.append(f"{now}\n")
-                            in_completed_section = True
-                            completed_updated = True
-                        elif in_completed_section:
-                            if line.startswith("## "):
-                                in_completed_section = False
-                                new_lines.append(line)
+                if os.path.exists(md_path):
+                    try:
+                        with open(md_path, 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                        # Completed dateの書き換え
+                        new_lines = []
+                        in_completed_section = False
+                        completed_updated = False
+                        for line in lines:
+                            if line.strip().startswith("## Completed"):
+                                new_lines.append("## Completed\n")
+                                new_lines.append(f"{now}\n")
+                                in_completed_section = True
+                                completed_updated = True
+                            elif in_completed_section:
+                                if line.startswith("## "):
+                                    in_completed_section = False
+                                    new_lines.append(line)
+                                else:
+                                    pass
                             else:
-                                pass
-                        else:
-                            new_lines.append(line)
+                                new_lines.append(line)
+                        
+                        with open(md_path, "w", encoding='utf-8') as f:
+                            f.writelines(new_lines)
                     
-                    with open(md_path, "w", encoding='utf-8') as f:
-                        f.writelines(new_lines)
-                
-                except Exception as e:
-                    print(f"Failed to update completed markdown file: \n{md_path}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)
+                    except Exception as e:
+                        print(f"Failed to update completed markdown file: \n{md_path}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)
 
             else:
                 # Done以外に移った場合はcompleted_dateをリセット
                 task.completed_date = None
-                try:
-                    with open(md_path, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                    # Completed dateの書き換え
-                    new_lines = []
-                    in_completed_section = False
-                    for line in lines:
-                        if line.strip().startswith("## Completed"):
-                            new_lines.append("## Completed\n")
-                            in_completed_section = True
-                        elif in_completed_section:
-                            if line.startswith("## "):
-                                in_completed_section = False
-                                new_lines.append(line)
+                if os.path.exists(md_path):
+                    try:
+                        with open(md_path, 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                        # Completed dateの書き換え
+                        new_lines = []
+                        in_completed_section = False
+                        for line in lines:
+                            if line.strip().startswith("## Completed"):
+                                new_lines.append("## Completed\n")
+                                in_completed_section = True
+                            elif in_completed_section:
+                                if line.startswith("## "):
+                                    in_completed_section = False
+                                    new_lines.append(line)
+                                else:
+                                    pass
+                                # Completedセクション内の行はスキップ
                             else:
-                                pass
-                            # Completedセクション内の行はスキップ
-                        else:
-                            new_lines.append(line)
+                                new_lines.append(line)
+                        
+                        with open(md_path, "w", encoding='utf-8') as f:
+                            f.writelines(new_lines)
                     
-                    with open(md_path, "w", encoding='utf-8') as f:
-                        f.writelines(new_lines)
-                
-                except Exception as e:
-                    print(f"Failed to update completed markdown file: \n{md_path}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)   
+                    except Exception as e:
+                        print(f"Failed to update completed markdown file: \n{md_path}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)   
 
             self.controller.update_task(task)
             self.controller.save()
