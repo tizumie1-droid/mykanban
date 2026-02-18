@@ -501,12 +501,12 @@ class KanbanView(wx.Frame):
             src_dir = os.path.join(md_dir, "todo")
             filename = os.path.join(src_dir, f"{safe_name}.md")
             archive_dir = os.path.join(md_dir, "archive")
-            try:
-                shutil.move(filename, os.path.join(archive_dir, f"{safe_name}.md"))
-                print(f"Archived markdown file: {filename}")
-            except Exception as e:
-                wx.MessageBox(f"Failed to archive markdown file: \n{filename}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)
-            
+            if os.path.exists(filename):
+                try:
+                    shutil.move(filename, os.path.join(archive_dir, f"{safe_name}.md"))
+                    print(f"Archived markdown file: {filename}")
+                except Exception as e:
+                    wx.MessageBox(f"Failed to archive markdown file: \n{filename}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)
             self.controller.update_task(task)
         self.controller.save()
         wx.CallAfter(self.refresh)
