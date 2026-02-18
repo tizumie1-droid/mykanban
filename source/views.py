@@ -19,24 +19,29 @@ class TaskCard(wx.Panel):
         self.task = task
         self.controller = controller
         self.refresh_cb = refresh_cb
+        self.SetMinSize((0, 160))
 
         # self.SetBackgroundColour(self.get_color_by_status(task.status))
 
         vbox = wx.BoxSizer(wx.VERTICAL)
 
-        title = wx.StaticText(self, label=task.name)
-        title.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.title = wx.StaticText(self, label=task.name)
+        self.title.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.title.SetMinSize((0, -1))
 
         start = wx.StaticText(self, label=f"Start: {task.start_date if task.start_date else '-'}")
         due = wx.StaticText(self, label=f"Due: {task.due if task.due else '-'}") 
-        memo = wx.StaticText(self, label=task.memo)
+        self.memo = wx.StaticText(self, label=task.memo)
 
-        vbox.Add(title, 0, wx.EXPAND | wx.ALL, 5)
+        vbox.Add(self.title, 3, wx.EXPAND | wx.ALL, 5)
         vbox.Add(start, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         vbox.Add(due, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
-        vbox.Add(memo, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        vbox.Add(self.memo, 4, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
 
         self.SetSizer(vbox)
+
+        # 
+        self.Bind(wx.EVT_SIZE, self.on_resize)
 
         # Drag & Drop
         bind_drag(self, task)
@@ -44,8 +49,10 @@ class TaskCard(wx.Panel):
         self.Bind(wx.EVT_RIGHT_DOWN, self.on_conext_menu)
 
     def on_resize(self, event):
-        width = self.GetSize().width
-        self.title.Wrap(width)
+        width = self.GetClientSize().width
+        wrap_width = max(10, width - 20)  # 少し余裕を持たせる
+        self.title.Wrap(wrap_width)
+        self.memo.Wrap(wrap_width)
         self.Layout()
         event.Skip()
 
@@ -355,23 +362,32 @@ class KanbanView(wx.Frame):
 
         # Board
         self.board_panel = wx.Panel(panel)
+        self.board_panel.SetMinSize((0, 0))
         hbox = wx.BoxSizer(wx.HORIZONTAL)
 
-        todo = self.create_column(self.board_panel, "To Do", "todo")
-        pending = self.create_column(self.board_panel, "Pending", "pending")
+        left_panel = wx.Panel(self.board_panel)
+        left_panel.SetMinSize((0, 0))
+        left_vbox = wx.BoxSizer(wx.VERTICAL)
+
+        todo = self.create_column(left_panel, "To Do", "todo")
+        pending = self.create_column(left_panel, "Pending", "pending")
         doing = self.create_column(self.board_panel, "Doing", "doing")
         done = self.create_column(self.board_panel, "Done", "done")
+        todo["panel"].SetMinSize((0, 0))
+        pending["panel"].SetMinSize((0, 0))
+        doing["panel"].SetMinSize((0, 0))
+        done["panel"].SetMinSize((0, 0))
         
         self.columns["todo"] = todo
         self.columns["pending"] = pending
         self.columns["doing"] = doing
         self.columns["done"] = done
-
-        left_vbox = wx.BoxSizer(wx.VERTICAL)
-        left_vbox.Add(todo["panel"], 3, wx.EXPAND | wx.ALL, 5)
+        
+        left_vbox.Add(todo["panel"], 2, wx.EXPAND | wx.ALL, 5)
         left_vbox.Add(pending["panel"], 1, wx.EXPAND | wx.ALL, 5)
+        left_panel.SetSizer(left_vbox)
 
-        hbox.Add(left_vbox, 1, wx.EXPAND | wx.ALL, 5)
+        hbox.Add(left_panel, wx.SizerFlags(1).Expand().Border(wx.LEFT | wx.RIGHT| wx.BOTTOM, 5).Border(wx.TOP, 0))
         hbox.Add(doing["panel"], 1, wx.EXPAND | wx.ALL, 5)
         hbox.Add(done["panel"], 1, wx.EXPAND | wx.ALL, 5)
 
@@ -513,7 +529,7 @@ class KanbanView(wx.Frame):
         wx.MessageBox(f"Archived {len(tasks_to_archive)} tasks.", "Archive Completed", wx.OK | wx.ICON_INFORMATION)
 
     def on_open_completed_list(self, event):
-        dlg = CompleteListView(self.controller)
+        dlg = CompleteListView(self, self.controller)
         dlg.Show()
 
     def on_refresh_tasks(self, event):
@@ -550,7 +566,9 @@ class KanbanView(wx.Frame):
                 continue
             for task in tasks:
                 card = TaskCard(col["task_container"], task, self.controller, self.refresh)
+                card.SetMaxSize((-1, 200))
                 col["task_sizer"].Add(card, 1, wx.EXPAND | wx.ALL, 5)
+                # col["task_sizer"].Add(card, 1, wx.EXPAND | wx.ALL, 5)
         
         for col in self.columns.values():
             col["task_container"].Layout()
@@ -564,8 +582,9 @@ class KanbanView(wx.Frame):
 # ==============================
 
 class  CompleteListView(wx.Frame):
-    def __init__(self, controller):
-        super().__init__(None, title="Completed Tasks", size=(900, 600))
+    def __init__(self, parent, controller):
+        super().__init__(parent, title="Completed Tasks", size=(900, 600))
+        self.parent = parent
         self.controller = controller
 
         panel = wx.Panel(self)
@@ -604,12 +623,15 @@ class  CompleteListView(wx.Frame):
         idx = event.GetIndex()
         if idx == wx.NOT_FOUND:
             return
-        
         menu = wx.Menu()
         open_md_item = menu.Append(wx.ID_ANY, "Open Markdown")
         delete_task_item = menu.Append(wx.ID_ANY, "Delete Task")
+        edit_item = menu.Append(wx.ID_ANY, "Edit Task")
+        back_todo_board_item = menu.Append(wx.ID_ANY, "Move back to To Do")
         self.Bind(wx.EVT_MENU, lambda e: self.on_open_md_file(idx), open_md_item)
         self.Bind(wx.EVT_MENU, lambda e: self.on_delete_task(idx), delete_task_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_edit_task(idx), edit_item)
+        self.Bind(wx.EVT_MENU, lambda e: self.on_back_to_todo(idx), back_todo_board_item)
 
         self.PopupMenu(menu)
         menu.Destroy()
@@ -645,3 +667,29 @@ class  CompleteListView(wx.Frame):
                     wx.MessageBox(f"Failed to delete markdown file: \n{filename}\n{e}", "File Error", wx.OK | wx.ICON_ERROR)
             self.populate_list()
         dlg.Destroy()
+    
+    def on_edit_task(self, idx):
+        # CompleteListからも簡易な編集のみ可能とする
+        dlg = EditTaskDialog(self, self.tasks[idx])
+        if dlg.ShowModal() == wx.ID_OK:
+            data = dlg.get_data()
+            task = self.tasks[idx]
+            task.name = data['name']
+            task.start_date = data['start_date']
+            task.due = data['due']
+            task.completed_date = data['completed_date']
+            task.memo = data['memo']
+            self.controller.update_task(task)
+            
+            # create_mdがチェックされていた場合、エラーを返す
+            if data.get("create_md"):
+                wx.MessageBox("Markdown file creation is not allowed from the completed tasks list. Please edit the task from the main board to create or edit the markdown file.", "Action Not Allowed", wx.OK | wx.ICON_INFORMATION)
+            self.populate_list()
+        dlg.Destroy()
+    
+    def on_back_to_todo(self, idx):
+        self.tasks[idx].status = "todo"
+        self.tasks[idx].completed_date = None
+        self.controller.save()
+        self.populate_list()
+        self.parent.refresh()
